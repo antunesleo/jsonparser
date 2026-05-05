@@ -108,6 +108,30 @@ def parse_object(s, pos):
         pos += 1
 
 
+def parse_list(s, pos):
+    if pos >= len(s) or s[pos] != "[":
+        raise ParsingError("ha!")
+    pos += 1
+    pos = skip_ws(s, pos)
+
+    if pos < len(s) and s[pos] == "]":
+        return [], pos + 1
+
+    result = []
+    while True:
+        value, pos = parse_value(s, pos)
+        result.append(value)
+
+        pos = skip_ws(s, pos)
+        if pos >= len(s):
+            raise ParsingError("ha!")
+        if s[pos] == "]":
+            return result, pos + 1
+        if s[pos] != ",":
+            raise ParsingError("ha!")
+        pos += 1
+
+
 def parse_value(s, pos):
     pos = skip_ws(s, pos)
     if pos >= len(s):
@@ -123,6 +147,8 @@ def parse_value(s, pos):
         return parse_string(s, pos)
     if c == "{":
         return parse_object(s, pos)
+    if c == "[":
+        return parse_list(s, pos)
     raise ParsingError("aha!")
 
 

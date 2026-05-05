@@ -171,3 +171,43 @@ def test_parse_wrong_string(wrong_json):
 )
 def test_parse_shallow_object(json_str, expected):
     assert parsestr(json_str) == expected
+
+
+@pytest.mark.parametrize(
+    "json_str,expected",
+    [
+        ("[]", []),
+        (" [] ", []),
+        ("\t[]\n", []),
+        ("[1]", [1]),
+        ("[1, 2, 3]", [1, 2, 3]),
+        (" [ 1 , 2 , 3 ] ", [1, 2, 3]),
+        ("[null, true, false]", [None, True, False]),
+        ('["a", "b"]', ["a", "b"]),
+        ('[1, "two", 3.5, null]', [1, "two", 3.5, None]),
+        ("[[1, 2], [3, 4]]", [[1, 2], [3, 4]]),
+        ('[{"k": 1}]', [{"k": 1}]),
+    ]
+)
+def test_parse_list(json_str, expected):
+    assert parsestr(json_str) == expected
+
+
+@pytest.mark.parametrize(
+    "wrong_json",
+    [
+        "[",
+        "]",
+        "[,]",
+        "[1,]",
+        "[,1]",
+        "[1 2]",
+        "[1, 2",
+        "1, 2]",
+        "[]x",
+        "[1] [2]",
+    ]
+)
+def test_parse_wrong_list(wrong_json):
+    with pytest.raises(ParsingError):
+        parsestr(wrong_json)
