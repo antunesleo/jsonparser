@@ -2,98 +2,97 @@ class ParsingError(Exception):
     pass
 
 
-def parsestr(json_str: str):
-    stack = []
+WHITESPACE = " \t\n\r"
+DIGITS = "0123456789"
 
-    first_char_index = 0
-    for index, char in enumerate(json_str):
-        if char != " ":
-            first_char_index = index
-            break
 
-    first_char = json_str[first_char_index]
-    
-    fixed_parsing_dict = {
-        "null": None,
-        "true": True,
-        "false": False,
-    }
-    target_fixed_primitive = None
-    if first_char == "n":
-        target_fixed_primitive = "null"
-    if first_char == "t":
-        target_fixed_primitive = "true"
-    if first_char == "f":
-        target_fixed_primitive = "false"
+def skip_ws(s, pos):
+    while pos < len(s) and s[pos] in WHITESPACE:
+        pos += 1
+    return pos
 
-    if target_fixed_primitive: 
-        possible_primitive = []
-        for index in range(first_char_index, min(first_char_index+len(target_fixed_primitive), len(json_str))):
-            possible_primitive.append(json_str[index])
-        if "".join(possible_primitive) == target_fixed_primitive:
-            return fixed_parsing_dict[target_fixed_primitive]
+
+def parse_null(s, pos):
+    if not s.startswith("null", pos):
         raise ParsingError("aha!")
+    return None, pos + 4
 
-    zero_to_9 = ("0", "1", "2", "3", "4", "5", "6", "7", "8", "9")
-    starting_number_chars = ("-",) + zero_to_9
-    number_chars = zero_to_9 + (".", "e")
-    if first_char in starting_number_chars:
-        is_float = False
-        is_exp = False
-        possible_number = []
 
-        for index in range(first_char_index, len(json_str)):
-            possible_char = json_str[index]
-            if possible_char == " ":
-                for j in range(index+1, len(json_str)):
-                    if json_str[j] != " ":
-                        raise ParsingError("aha!")
-                    break
+def parse_bool(s, pos):
+    if s.startswith("true", pos):
+        return True, pos + 4
+    if s.startswith("false", pos):
+        return False, pos + 5
+    raise ParsingError("aha!")
 
-            elif possible_char not in number_chars:
-                raise ParsingError("aha!")
-            
-            if possible_char in ".":
-                if is_float:
-                    raise ParsingError("aha!")
-                is_float = True
-            if possible_char in "e":
-                if is_exp:
-                    raise ParsingError("aha!")
-                is_exp = True
-            possible_number.append(possible_char)
-    
 
-        possible_number_str = "".join(possible_number)
-        if is_float or is_exp:
-            return float(possible_number_str)
-        return int(possible_number_str)
+def parse_number(s, pos):
+    start = pos
 
-    if first_char == "{":
-        for index in range(first_char_index, len(json_str)):
-            char = json_str[index]
+    if pos < len(s) and s[pos] == "-":
+        pos += 1
 
-            if char == " ":
-                continue
+    if pos >= len(s) or s[pos] not in DIGITS:
+        raise ParsingError("aha!")
+    if s[pos] == "0":
+        pos += 1
+    else:
+        while pos < len(s) and s[pos] in DIGITS:
+            pos += 1
 
-            if char == "{":
-                if len(stack) > 0:
-                    raise ParsingError("ha!")
-                
-                stack.append(char)
-            
-            elif char == "}":
-                if not stack:
-                    raise ParsingError("ha!")
-            
-                stack.pop()
+    is_float = False
 
-            else:
-                raise ParsingError("ha!")
-            
-        if stack:
-            raise ParsingError("ha!")
-    
-        return {}
-    
-    raise ParsingError("ha!")
+    if pos < len(s) and s[pos] == ".":
+        is_float = True
+        pos += 1
+        if pos >= len(s) or s[pos] not in DIGITS:
+            raise ParsingError("aha!")
+        while pos < len(s) and s[pos] in DIGITS:
+            pos += 1
+
+    if pos < len(s) and s[pos] in "eE":
+        is_float = True
+        pos += 1
+        if pos < len(s) and s[pos] in "+-":
+            pos += 1
+        if pos >= len(s) or s[pos] not in DIGITS:
+            raise ParsingError("aha!")
+        while pos < len(s) and s[pos] in DIGITS:
+            pos += 1
+
+    text = s[start:pos]
+    return (float(text) if is_float else int(text)), pos
+
+
+def parse_object(s, pos):
+    if pos >= len(s) or s[pos] != "{":
+        raise ParsingError("ha!")
+    pos += 1
+    pos = skip_ws(s, pos)
+    if pos >= len(s) or s[pos] != "}":
+        raise ParsingError("ha!")
+    return {}, pos + 1
+
+
+def parse_value(s, pos):
+    pos = skip_ws(s, pos)
+    if pos >= len(s):
+        raise ParsingError("aha!")
+    c = s[pos]
+    if c == "n":
+        return parse_null(s, pos)
+    if c == "t" or c == "f":
+        return parse_bool(s, pos)
+    if c == "-" or c in DIGITS:
+        return parse_number(s, pos)
+    if c == "{":
+        return parse_object(s, pos)
+    raise ParsingError("aha!")
+
+
+def parsestr(json_str: str):
+    value, pos = parse_value(json_str, 0)
+    pos = skip_ws(json_str, pos)
+    if pos != len(json_str):
+        raise ParsingError("aha!")
+    return value
