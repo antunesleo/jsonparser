@@ -121,16 +121,16 @@ def test_parse_wrong_number(wrong_json):
         parsestr(wrong_json)
 
 
-# @pytest.mark.parametrize(
-#     "json_str, expected",
-#     [
-#         ('{"field": "value"}', {"field": "value"}), 
-#         ('{"field": 1}', {"field": 1}),
-#         ('{"field": 1.5}', {"field": 1.5}),
-#         ('{"field": null}', {"field": None}),
-#         ('{"field": false}', {"field": False}),
-#         ('{"field1": true, "field2": "value"}', {"field1": True, "field2": "value"})
-#     ]
-# )
-# def test_parse_shallow_object(json_str, expected):
-#     assert parsestr(json_str) == expected
+@pytest.mark.parametrize(
+    "json_str, expected",
+    [
+        ('{"field": "value"}', {"field": "value"}), 
+        ('{"field": 1}', {"field": 1}),
+        ('{"field": 1.5}', {"field": 1.5}),
+        ('{"field": null}', {"field": None}),
+        ('{"field": false}', {"field": False}),
+        ('{"field1": true, "field2": "value"}', {"field1": True, "field2": "value"})
+    ]
+)
+def test_parse_shallow_object(json_str, expected):
+    assert parsestr(json_str) == expected

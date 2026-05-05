@@ -64,14 +64,48 @@ def parse_number(s, pos):
     return (float(text) if is_float else int(text)), pos
 
 
+def parse_string(s, pos):
+    if pos >= len(s) or s[pos] != '"':
+        raise ParsingError("aha!")
+    pos += 1
+    start = pos
+    while pos < len(s) and s[pos] != '"':
+        pos += 1
+    if pos >= len(s):
+        raise ParsingError("aha!")
+    return s[start:pos], pos + 1
+
+
 def parse_object(s, pos):
     if pos >= len(s) or s[pos] != "{":
         raise ParsingError("ha!")
     pos += 1
     pos = skip_ws(s, pos)
-    if pos >= len(s) or s[pos] != "}":
-        raise ParsingError("ha!")
-    return {}, pos + 1
+
+    if pos < len(s) and s[pos] == "}":
+        return {}, pos + 1
+
+    result = {}
+    while True:
+        pos = skip_ws(s, pos)
+        key, pos = parse_string(s, pos)
+
+        pos = skip_ws(s, pos)
+        if pos >= len(s) or s[pos] != ":":
+            raise ParsingError("ha!")
+        pos += 1
+
+        value, pos = parse_value(s, pos)
+        result[key] = value
+
+        pos = skip_ws(s, pos)
+        if pos >= len(s):
+            raise ParsingError("ha!")
+        if s[pos] == "}":
+            return result, pos + 1
+        if s[pos] != ",":
+            raise ParsingError("ha!")
+        pos += 1
 
 
 def parse_value(s, pos):
@@ -85,6 +119,8 @@ def parse_value(s, pos):
         return parse_bool(s, pos)
     if c == "-" or c in DIGITS:
         return parse_number(s, pos)
+    if c == '"':
+        return parse_string(s, pos)
     if c == "{":
         return parse_object(s, pos)
     raise ParsingError("aha!")
