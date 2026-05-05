@@ -54,7 +54,16 @@ def test_parse_wrong_boolean(wrong_json):
 
 @pytest.mark.parametrize(
     "json_str,expected",
-    [("1", 1), (" 0", 0), ("150", 150), ("128.23 ", 128.23), ("120e2", 12000)]
+    [("1", 1), (" 0", 0), (" 150 ", 150), (" 128.23 ", 128.23), ("120e2", 12000)]
 )
 def test_parse_number(json_str, expected):
     assert parsestr(json_str) == expected
+
+
+@pytest.mark.parametrize(
+    "wrong_json",
+    ["1 50", "50*43", ".23", "45.45.45", "45,45.45", "45e2e2"]
+)
+def test_parse_wrong_number(wrong_json):
+    with pytest.raises(ParsingError):
+        parsestr(wrong_json)

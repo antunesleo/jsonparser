@@ -41,10 +41,18 @@ def parsestr(json_str: str):
         is_float = False
         is_exp = False
         possible_number = []
+
         for index in range(first_char_index, len(json_str)):
             possible_char = json_str[index]
-            if possible_char not in number_chars:
-                break
+            if possible_char == " ":
+                for j in range(index+1, len(json_str)):
+                    if json_str[j] != " ":
+                        raise ParsingError("aha!")
+                    break
+
+            elif possible_char not in number_chars:
+                raise ParsingError("aha!")
+            
             if possible_char in ".":
                 if is_float:
                     raise ParsingError("aha!")
