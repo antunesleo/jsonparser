@@ -12,12 +12,26 @@ def parsestr(json_str: str):
             break
 
     first_char = json_str[first_char_index]
+    
+    fixed_parsing_dict = {
+        "null": None,
+        "true": True,
+        "false": False,
+    }
+    target_primitive = None
     if first_char == "n":
-        possible_null = []
-        for index in range(first_char_index, min(first_char_index+4, len(json_str))):
-            possible_null.append(json_str[index])
-        if "".join(possible_null) == "null":
-            return None
+        target_primitive = "null"
+    if first_char == "t":
+        target_primitive = "true"
+    if first_char == "f":
+        target_primitive = "false"
+
+    if target_primitive: 
+        possible_primitive = []
+        for index in range(first_char_index, min(first_char_index+len(target_primitive), len(json_str))):
+            possible_primitive.append(json_str[index])
+        if "".join(possible_primitive) == target_primitive:
+            return fixed_parsing_dict[target_primitive]
         raise ParsingError("aha!")
 
     if first_char == "{":

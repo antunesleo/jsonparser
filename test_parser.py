@@ -31,6 +31,22 @@ def test_parse_null(json_str):
     "wrong_json",
     ["n ull", " nu ll", "NULL ", "none", "\{null\}"]
 )
-def test_parse_null(wrong_json):
+def test_parse_wrong_null(wrong_json):
+    with pytest.raises(ParsingError):
+        parsestr(wrong_json)
+
+
+@pytest.mark.parametrize(
+    "json_str,expected",
+    [("true", True), (" true", True), ("false", False), ("false ", False)]
+)
+def test_parse_boolean(json_str, expected):
+    assert parsestr(json_str) == expected
+
+@pytest.mark.parametrize(
+    "wrong_json",
+    ["True", "False", "tr ue", "fa lse"]
+)
+def test_parse_wrong_boolean(wrong_json):
     with pytest.raises(ParsingError):
         parsestr(wrong_json)
