@@ -18,20 +18,20 @@ def parsestr(json_str: str):
         "true": True,
         "false": False,
     }
-    target_primitive = None
+    target_fixed_primitive = None
     if first_char == "n":
-        target_primitive = "null"
+        target_fixed_primitive = "null"
     if first_char == "t":
-        target_primitive = "true"
+        target_fixed_primitive = "true"
     if first_char == "f":
-        target_primitive = "false"
+        target_fixed_primitive = "false"
 
-    if target_primitive: 
+    if target_fixed_primitive: 
         possible_primitive = []
-        for index in range(first_char_index, min(first_char_index+len(target_primitive), len(json_str))):
+        for index in range(first_char_index, min(first_char_index+len(target_fixed_primitive), len(json_str))):
             possible_primitive.append(json_str[index])
-        if "".join(possible_primitive) == target_primitive:
-            return fixed_parsing_dict[target_primitive]
+        if "".join(possible_primitive) == target_fixed_primitive:
+            return fixed_parsing_dict[target_fixed_primitive]
         raise ParsingError("aha!")
 
     if first_char == "{":
