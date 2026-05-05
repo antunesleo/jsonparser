@@ -7,6 +7,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
+from astparser import parsestr as ast_parsestr
 from parser import parsestr
 
 
@@ -71,35 +72,42 @@ def main():
 
     bytes_x: list[int] = []
     pstr_t: list[float] = []
+    ast_t: list[float] = []
     json_t: list[float] = []
     pstr_m: list[int] = []
+    ast_m: list[int] = []
     json_m: list[int] = []
 
-    print(f"{'n':>7} {'bytes':>10} {'parsestr_ms':>12} {'json_ms':>10} "
-          f"{'parsestr_KB':>13} {'json_KB':>10} {'time_x':>8} {'mem_x':>7}")
-    print("-" * 84)
+    print(f"{'n':>7} {'bytes':>10} {'parsestr_ms':>12} {'ast_ms':>9} {'json_ms':>9} "
+          f"{'parsestr_KB':>13} {'ast_KB':>9} {'json_KB':>9}")
+    print("-" * 87)
 
     for n in sizes:
         payload = gen_json(n)
         n_bytes = len(payload.encode("utf-8"))
 
         t_p = measure_time(parsestr, payload)
+        t_a = measure_time(ast_parsestr, payload)
         t_j = measure_time(json.loads, payload)
         m_p = measure_memory(parsestr, payload)
+        m_a = measure_memory(ast_parsestr, payload)
         m_j = measure_memory(json.loads, payload)
 
         bytes_x.append(n_bytes)
         pstr_t.append(t_p)
+        ast_t.append(t_a)
         json_t.append(t_j)
         pstr_m.append(m_p)
+        ast_m.append(m_a)
         json_m.append(m_j)
 
-        print(f"{n:>7} {n_bytes:>10} {t_p*1000:>12.2f} {t_j*1000:>10.2f} "
-              f"{m_p/1024:>13.1f} {m_j/1024:>10.1f} {t_p/t_j:>7.1f}x {m_p/m_j:>6.1f}x")
+        print(f"{n:>7} {n_bytes:>10} {t_p*1000:>12.2f} {t_a*1000:>9.2f} {t_j*1000:>9.2f} "
+              f"{m_p/1024:>13.1f} {m_a/1024:>9.1f} {m_j/1024:>9.1f}")
 
     fig, (ax_t, ax_m) = plt.subplots(1, 2, figsize=(13, 5))
 
-    ax_t.plot(bytes_x, pstr_t, "o-", label="parsestr (pure Python)")
+    ax_t.plot(bytes_x, pstr_t, "o-", label="parsestr (single-phase)")
+    ax_t.plot(bytes_x, ast_t, "o-", label="astparser (tokenize + parse + evaluate)")
     ax_t.plot(bytes_x, json_t, "o-", label="json.loads (stdlib, C-backed)")
     ax_t.set_xscale("log")
     ax_t.set_yscale("log")
@@ -109,7 +117,8 @@ def main():
     ax_t.grid(True, which="both", alpha=0.3)
     ax_t.legend()
 
-    ax_m.plot(bytes_x, [m / 1024 for m in pstr_m], "o-", label="parsestr (pure Python)")
+    ax_m.plot(bytes_x, [m / 1024 for m in pstr_m], "o-", label="parsestr (single-phase)")
+    ax_m.plot(bytes_x, [m / 1024 for m in ast_m], "o-", label="astparser (tokenize + parse + evaluate)")
     ax_m.plot(bytes_x, [m / 1024 for m in json_m], "o-", label="json.loads (stdlib, C-backed)")
     ax_m.set_xscale("log")
     ax_m.set_yscale("log")
@@ -119,7 +128,7 @@ def main():
     ax_m.grid(True, which="both", alpha=0.3)
     ax_m.legend()
 
-    fig.suptitle("parsestr vs json.loads — nested JSON tree of N nodes (branching factor 4)")
+    fig.suptitle("parsestr vs astparser vs json.loads — nested JSON tree of N nodes (branching factor 4)")
     plt.tight_layout()
 
     out = Path("benchmark.png")

@@ -1,7 +1,6 @@
 import pytest
 
-from parser import ParsingError
-from tokenizer import Token, TokenType, tokenize
+from astparser import ParsingError, Token, TokenType, tokenize
 
 
 def T(type, value=None):
