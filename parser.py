@@ -34,11 +34,32 @@ def parsestr(json_str: str):
             return fixed_parsing_dict[target_fixed_primitive]
         raise ParsingError("aha!")
 
+    zero_to_9 = ("0", "1", "2", "3", "4", "5", "6", "7", "8", "9")
+    starting_number_chars = ("-",) + zero_to_9
+    number_chars = zero_to_9 + (".", "e")
+    if first_char in starting_number_chars:
+        is_float = False
+        is_exp = False
+        possible_number = []
+        for index in range(first_char_index, len(json_str)):
+            possible_char = json_str[index]
+            if possible_char not in number_chars:
+                break
+            if possible_char in ".":
+                if is_float:
+                    raise ParsingError("aha!")
+                is_float = True
+            if possible_char in "e":
+                if is_exp:
+                    raise ParsingError("aha!")
+                is_exp = True
+            possible_number.append(possible_char)
+    
 
-    # if first_char in ("-", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"):
-    #     possible_number = []
-    #     for index in range(first_char_index, len(json_str)):
-    #         pass
+        possible_number_str = "".join(possible_number)
+        if is_float or is_exp:
+            return float(possible_number_str)
+        return int(possible_number_str)
 
     if first_char == "{":
         for index in range(first_char_index, len(json_str)):
