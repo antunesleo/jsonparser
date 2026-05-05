@@ -34,6 +34,12 @@ def parsestr(json_str: str):
             return fixed_parsing_dict[target_fixed_primitive]
         raise ParsingError("aha!")
 
+
+    # if first_char in ("-", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"):
+    #     possible_number = []
+    #     for index in range(first_char_index, len(json_str)):
+    #         pass
+
     if first_char == "{":
         for index in range(first_char_index, len(json_str)):
             char = json_str[index]
@@ -47,11 +53,14 @@ def parsestr(json_str: str):
                 
                 stack.append(char)
             
-            if char == "}":
+            elif char == "}":
                 if not stack:
                     raise ParsingError("ha!")
             
                 stack.pop()
+
+            else:
+                raise ParsingError("ha!")
             
         if stack:
             raise ParsingError("ha!")
