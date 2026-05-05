@@ -5,3 +5,6 @@ install:
 
 test:
 	uv run pytest
+
+bm:
+	python3 benchmark.py

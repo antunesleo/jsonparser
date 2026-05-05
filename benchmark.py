@@ -11,18 +11,37 @@ from parser import parsestr
 
 
 def gen_json(n: int) -> str:
-    data = [
-        {
+    node_id = [0]
+
+    def make_node() -> dict:
+        i = node_id[0]
+        node_id[0] += 1
+        node: dict = {
             "id": i,
-            "name": f"item_{i}",
-            "value": i * 1.5,
+            "name": f"node_{i}",
+            "value": round(i * 1.5, 3),
             "active": i % 2 == 0,
-            "tags": ["alpha", "beta", "gamma"],
-            "meta": {"created": 1700000000 + i, "score": -i / 7.0},
+            "meta": {"score": round(-i / 7.0, 4), "created": 1700000000 + i},
         }
-        for i in range(n)
-    ]
-    return json.dumps(data)
+        if i % 3 == 0:
+            node["tags"] = ["alpha", "beta", "gamma"]
+        return node
+
+    def build_tree(count: int) -> dict:
+        node = make_node()
+        if count <= 1:
+            return node
+        remaining = count - 1
+        branching = min(4, remaining)
+        chunk, extra = divmod(remaining, branching)
+        children = {}
+        for j in range(branching):
+            size = chunk + (1 if j < extra else 0)
+            children[f"child_{j}"] = build_tree(size)
+        node["children"] = children
+        return node
+
+    return json.dumps(build_tree(n))
 
 
 def measure_time(fn, payload, repeats=3):
@@ -100,7 +119,7 @@ def main():
     ax_m.grid(True, which="both", alpha=0.3)
     ax_m.legend()
 
-    fig.suptitle("parsestr vs json.loads — JSON of N records (id, name, value, active, tags, meta)")
+    fig.suptitle("parsestr vs json.loads — nested JSON tree of N nodes (branching factor 4)")
     plt.tight_layout()
 
     out = Path("benchmark.png")

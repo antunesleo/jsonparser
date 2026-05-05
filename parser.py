@@ -1,3 +1,70 @@
+# Single-phase scannerless recursive descent parser for JSON.
+#
+# ── BACKGROUND: THE TWO PHASES OF PARSING ────────────────────────────────────
+#
+# Parsing is traditionally split into two phases:
+#
+#   1. Lexical analysis (lexing / tokenizing)
+#      Scans raw characters and groups them into tokens — the smallest meaningful
+#      chunks of the language. Each token has a type and a value, for example:
+#
+#        Input:  { "name" : "Alice" , "age" : 30 }
+#        Tokens: LBRACE  STRING("name")  COLON  STRING("Alice")  COMMA
+#                STRING("age")  COLON  NUMBER(30)  RBRACE
+#
+#      The token stream is flat (a sequence, not a tree) and raw (it preserves
+#      everything: source positions, comments, whitespace — things the parser
+#      does not care about but other tools like formatters or debuggers do).
+#
+#   2. Syntactic analysis (parsing)
+#      Consumes the token stream and enforces the grammar, producing an
+#      AST (Abstract Syntax Tree) — a hierarchical structure that captures
+#      relationships between tokens:
+#
+#        ObjectNode
+#          KeyValueNode(StringNode("name"), StringNode("Alice"))
+#          KeyValueNode(StringNode("age"),  NumberNode(30))
+#
+#      Notice that structural tokens like LBRACE, RBRACE, COLON, COMMA are gone —
+#      their job was to delimit structure, which is now encoded in the tree itself.
+#
+#      AST nodes are built from the *values* extracted from tokens, not from the
+#      token objects themselves (though some parsers do store the original token
+#      in each node to preserve position info for error messages).
+#
+# ── TOKEN STREAM vs AST ───────────────────────────────────────────────────────
+#
+#   Token stream: flat, complete, preserves source positions and comments.
+#   AST:          hierarchical, lossy (drops punctuation and metadata), captures meaning.
+#
+#   The main reason to keep them as separate phases is reuse and separation of concerns:
+#   different tools need different things from the same input. A syntax highlighter only
+#   needs tokens; a compiler needs the AST; a formatter needs both (AST for structure,
+#   token stream to recover the original comments and whitespace). With a clean separation
+#   each tool reuses the same lexer without re-implementing it.
+#
+#   A secondary benefit is error reporting: if parsing fails, the token stream still holds
+#   exact source positions, enabling "unexpected token X at line 3, col 7" messages.
+#
+# ── WHAT THIS IMPLEMENTATION DOES INSTEAD ────────────────────────────────────
+#
+#   Both phases are merged into a single pass directly over the characters.
+#   No token objects are created, no AST is built — the final Python value is
+#   constructed directly as the input is consumed.
+#
+#   This is valid for JSON because one character of lookahead is always enough
+#   to decide which token type follows — no backtracking, no ambiguity.
+#
+#   Memory comparison:
+#     Two-phase: O(n) token stream + O(n) AST + O(depth) call stack + output value
+#     This impl: O(depth) call stack + output value
+#
+#   The trade-off: an AST is worth the memory cost when multiple passes are needed
+#   (a compiler does type checking, optimization, and code generation — all on the
+#   same tree). For JSON there is only ever one pass, so the intermediate structures
+#   buy nothing.
+
+
 class ParsingError(Exception):
     pass
 
@@ -6,18 +73,28 @@ WHITESPACE = " \t\n\r"
 DIGITS = "0123456789"
 
 
+# --- Lexical analysis ----------------------------------------------------------
+# The functions below do the work a separate lexer would do: scan raw characters,
+# recognize a token boundary, and return the token's value. In a two-phase design
+# these would return a Token object (type + raw text + position) instead of the
+# final Python value, leaving interpretation to the parser phase.
+
+# Pure lexer concern: a real lexer silently absorbs whitespace between tokens so
+# the parser never sees it. We call this explicitly wherever whitespace is allowed.
 def skip_ws(s, pos):
     while pos < len(s) and s[pos] in WHITESPACE:
         pos += 1
     return pos
 
 
+# Recognizes a NULL keyword token.
 def parse_null(s, pos):
     if not s.startswith("null", pos):
         raise ParsingError("aha!")
     return None, pos + 4
 
 
+# Recognizes a BOOL keyword token (true / false).
 def parse_bool(s, pos):
     if s.startswith("true", pos):
         return True, pos + 4
@@ -26,6 +103,8 @@ def parse_bool(s, pos):
     raise ParsingError("aha!")
 
 
+# Recognizes a NUMBER token. Scans the full lexeme (sign, integer part, optional
+# decimal and exponent) before converting — matching what a lexer's regex would capture.
 def parse_number(s, pos):
     start = pos
 
@@ -64,6 +143,7 @@ def parse_number(s, pos):
     return (float(text) if is_float else int(text)), pos
 
 
+# Recognizes a STRING token, returning the content between the quotes.
 def parse_string(s, pos):
     if pos >= len(s) or s[pos] != '"':
         raise ParsingError("aha!")
@@ -74,6 +154,17 @@ def parse_string(s, pos):
     if pos >= len(s):
         raise ParsingError("aha!")
     return s[start:pos], pos + 1
+
+
+# --- Syntactic analysis -------------------------------------------------------
+# The functions below enforce the JSON grammar. In a two-phase design this code
+# would consume a token stream rather than raw characters, calling next_token()
+# instead of parse_string() / skip_ws() directly.
+#
+# Grammar rules (EBNF):
+#   object → '{' (string ':' value (',' string ':' value)*)? '}'
+#   array  → '[' (value (',' value)*)? ']'
+#   value  → null | bool | number | string | object | array
 
 
 def parse_object(s, pos):
@@ -132,6 +223,9 @@ def parse_list(s, pos):
         pos += 1
 
 
+# Token-type detection: peeking at the first character is always sufficient to
+# decide which token (and therefore which grammar branch) follows. This is the
+# equivalent of a lexer's dispatch table.
 def parse_value(s, pos):
     pos = skip_ws(s, pos)
     if pos >= len(s):
