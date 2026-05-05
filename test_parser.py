@@ -122,6 +122,43 @@ def test_parse_wrong_number(wrong_json):
 
 
 @pytest.mark.parametrize(
+    "json_str,expected",
+    [
+        ('"hello"', "hello"),
+        ('""', ""),
+        (' "hello"', "hello"),
+        ('"hello" ', "hello"),
+        (' "hello" ', "hello"),
+        ('\t"hello"\n', "hello"),
+        ('"hello world"', "hello world"),
+        ('"123"', "123"),
+        ('"true"', "true"),
+        ('"null"', "null"),
+        ('"with : colon and , comma"', "with : colon and , comma"),
+    ]
+)
+def test_parse_string(json_str, expected):
+    assert parsestr(json_str) == expected
+
+
+@pytest.mark.parametrize(
+    "wrong_json",
+    [
+        '"',
+        '"hello',
+        'hello"',
+        'hello',
+        "'hello'",
+        '"hello" garbage',
+        '""x',
+    ]
+)
+def test_parse_wrong_string(wrong_json):
+    with pytest.raises(ParsingError):
+        parsestr(wrong_json)
+
+
+@pytest.mark.parametrize(
     "json_str, expected",
     [
         ('{"field": "value"}', {"field": "value"}), 
