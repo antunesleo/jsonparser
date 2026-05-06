@@ -1,8 +1,8 @@
 # Two-phase JSON pipeline: lexer + parser + evaluator, all in one module.
 #
-#   tokenize(s)          str        -> list[Token]
-#   parse(tokens)        list[Token] -> Node (AST)
-#   evaluate(node)       Node       -> Python value
+#   tokenize(s)          str             -> Iterator[Token]
+#   parse(tokens)        Iterable[Token] -> Node (AST)
+#   evaluate(node)       Node            -> Python value
 #
 # The phases are kept distinct in code even though they live in the same file:
 # tokens know nothing about the AST, the AST knows nothing about evaluation.
@@ -11,6 +11,7 @@
 
 from dataclasses import dataclass
 from enum import Enum, auto
+from typing import Iterable, Iterator
 
 
 class ParsingError(Exception):
@@ -22,7 +23,7 @@ DIGITS = "0123456789"
 
 
 # --- Lexer --------------------------------------------------------------------
-# Scans raw characters into a flat list of tokens. Each helper recognizes one
+# Scans raw characters into a stream of tokens. Each helper recognizes one
 # token kind; tokenize() dispatches on the first character of each token, since
 # one-char lookahead is always enough to decide which JSON token follows.
 
@@ -40,7 +41,7 @@ class TokenType(Enum):
     NULL = auto()
 
 
-@dataclass
+@dataclass(slots=True)
 class Token:
     type: TokenType
     value: object = None
@@ -118,47 +119,45 @@ def lex_string(s, pos):
     return s[start:pos], pos + 1
 
 
-def tokenize(s: str) -> list[Token]:
-    tokens = []
+def tokenize(s: str) -> Iterator[Token]:
     pos = 0
     while True:
         pos = skip_ws(s, pos)
         if pos >= len(s):
-            break
+            return
         c = s[pos]
         if c == "{":
-            tokens.append(Token(TokenType.LBRACE))
+            yield Token(TokenType.LBRACE)
             pos += 1
         elif c == "}":
-            tokens.append(Token(TokenType.RBRACE))
+            yield Token(TokenType.RBRACE)
             pos += 1
         elif c == "[":
-            tokens.append(Token(TokenType.LBRACKET))
+            yield Token(TokenType.LBRACKET)
             pos += 1
         elif c == "]":
-            tokens.append(Token(TokenType.RBRACKET))
+            yield Token(TokenType.RBRACKET)
             pos += 1
         elif c == ":":
-            tokens.append(Token(TokenType.COLON))
+            yield Token(TokenType.COLON)
             pos += 1
         elif c == ",":
-            tokens.append(Token(TokenType.COMMA))
+            yield Token(TokenType.COMMA)
             pos += 1
         elif c == "n":
             value, pos = lex_null(s, pos)
-            tokens.append(Token(TokenType.NULL, value))
+            yield Token(TokenType.NULL, value)
         elif c in "tf":
             value, pos = lex_bool(s, pos)
-            tokens.append(Token(TokenType.BOOL, value))
+            yield Token(TokenType.BOOL, value)
         elif c == "-" or c in DIGITS:
             value, pos = lex_number(s, pos)
-            tokens.append(Token(TokenType.NUMBER, value))
+            yield Token(TokenType.NUMBER, value)
         elif c == '"':
             value, pos = lex_string(s, pos)
-            tokens.append(Token(TokenType.STRING, value))
+            yield Token(TokenType.STRING, value)
         else:
             raise ParsingError(f"unexpected character {c!r} at position {pos}")
-    return tokens
 
 
 # --- AST node definitions -----------------------------------------------------
@@ -168,48 +167,48 @@ def tokenize(s: str) -> list[Token]:
 
 
 class Node:
-    pass
+    __slots__ = ()
 
 
-@dataclass
+@dataclass(slots=True)
 class NullNode(Node):
     pass
 
 
-@dataclass
+@dataclass(slots=True)
 class BoolNode(Node):
     value: bool
 
 
-@dataclass
+@dataclass(slots=True)
 class NumberNode(Node):
     value: int | float
 
 
-@dataclass
+@dataclass(slots=True)
 class StringNode(Node):
     value: str
 
 
-@dataclass
+@dataclass(slots=True)
 class MemberNode(Node):
     key: StringNode
     value: Node
 
 
-@dataclass
+@dataclass(slots=True)
 class ObjectNode(Node):
     members: list[MemberNode]
 
 
-@dataclass
+@dataclass(slots=True)
 class ArrayNode(Node):
     elements: list[Node]
 
 
 # --- Token-stream parser ------------------------------------------------------
-# Each function returns (node, new_pos), threading pos through the recursion
-# the same way parser.py threads a character index.
+# Each function pulls tokens from a single-token-lookahead stream so the full
+# token list never has to be materialized — tokenize() can stream straight in.
 #
 # Grammar (EBNF):
 #   value  → NULL | BOOL | NUMBER | STRING | object | array
@@ -218,81 +217,121 @@ class ArrayNode(Node):
 #   array  → LBRACKET (value (COMMA value)*)? RBRACKET
 
 
-def parse_value(tokens: list[Token], pos: int) -> tuple[Node, int]:
-    if pos >= len(tokens):
+# Sentinel for "no token cached yet" — distinct from None, which is what peek()
+# returns at end of stream.
+_UNFETCHED = object()
+
+
+class TokenStream:
+    __slots__ = ("_it", "_current")
+
+    def __init__(self, it: Iterable[Token]):
+        self._it = iter(it)
+        self._current = _UNFETCHED
+
+    def peek(self) -> Token | None:
+        if self._current is _UNFETCHED:
+            self._current = next(self._it, None)
+        return self._current
+
+    def next_one(self) -> Token | None:
+        token = self.peek()
+        self._current = _UNFETCHED
+        return token
+
+
+def parse_value(token_stream: TokenStream) -> Node:
+    token = token_stream.peek()
+    if token is None:
         raise ParsingError("unexpected end of tokens")
-    tok = tokens[pos]
-    if tok.type == TokenType.NULL:
-        return NullNode(), pos + 1
-    if tok.type == TokenType.BOOL:
-        return BoolNode(tok.value), pos + 1
-    if tok.type == TokenType.NUMBER:
-        return NumberNode(tok.value), pos + 1
-    if tok.type == TokenType.STRING:
-        return StringNode(tok.value), pos + 1
-    if tok.type == TokenType.LBRACE:
-        return parse_object(tokens, pos)
-    if tok.type == TokenType.LBRACKET:
-        return parse_array(tokens, pos)
-    raise ParsingError(f"unexpected token {tok.type.name}")
+    if token.type == TokenType.NULL:
+        token_stream.next_one()
+        return NullNode()
+    if token.type == TokenType.BOOL:
+        token_stream.next_one()
+        return BoolNode(token.value)
+    if token.type == TokenType.NUMBER:
+        token_stream.next_one()
+        return NumberNode(token.value)
+    if token.type == TokenType.STRING:
+        token_stream.next_one()
+        return StringNode(token.value)
+    if token.type == TokenType.LBRACE:
+        return parse_object(token_stream)
+    if token.type == TokenType.LBRACKET:
+        return parse_array(token_stream)
+    raise ParsingError(f"unexpected token {token.type.name}")
 
 
-def parse_object(tokens: list[Token], pos: int) -> tuple[ObjectNode, int]:
-    if pos >= len(tokens) or tokens[pos].type != TokenType.LBRACE:
+def parse_object(token_stream: TokenStream) -> ObjectNode:
+    token = token_stream.peek()
+    if token is None or token.type != TokenType.LBRACE:
         raise ParsingError("expected '{'")
-    pos += 1
+    token_stream.next_one()
 
-    if pos < len(tokens) and tokens[pos].type == TokenType.RBRACE:
-        return ObjectNode([]), pos + 1
+    token = token_stream.peek()
+    if token is not None and token.type == TokenType.RBRACE:
+        token_stream.next_one()
+        return ObjectNode([])
 
     members: list[MemberNode] = []
     while True:
-        if pos >= len(tokens) or tokens[pos].type != TokenType.STRING:
+        token = token_stream.peek()
+        if token is None or token.type != TokenType.STRING:
             raise ParsingError("expected string key")
-        key = StringNode(tokens[pos].value)
-        pos += 1
+        key = StringNode(token.value)
+        token_stream.next_one()
 
-        if pos >= len(tokens) or tokens[pos].type != TokenType.COLON:
+        token = token_stream.peek()
+        if token is None or token.type != TokenType.COLON:
             raise ParsingError("expected ':'")
-        pos += 1
+        token_stream.next_one()
 
-        value, pos = parse_value(tokens, pos)
+        value = parse_value(token_stream)
         members.append(MemberNode(key, value))
 
-        if pos >= len(tokens):
+        token = token_stream.peek()
+        if token is None:
             raise ParsingError("unexpected end of tokens")
-        if tokens[pos].type == TokenType.RBRACE:
-            return ObjectNode(members), pos + 1
-        if tokens[pos].type != TokenType.COMMA:
+        if token.type == TokenType.RBRACE:
+            token_stream.next_one()
+            return ObjectNode(members)
+        if token.type != TokenType.COMMA:
             raise ParsingError("expected ',' or '}'")
-        pos += 1
+        token_stream.next_one()
 
 
-def parse_array(tokens: list[Token], pos: int) -> tuple[ArrayNode, int]:
-    if pos >= len(tokens) or tokens[pos].type != TokenType.LBRACKET:
+def parse_array(token_stream: TokenStream) -> ArrayNode:
+    token = token_stream.peek()
+    if token is None or token.type != TokenType.LBRACKET:
         raise ParsingError("expected '['")
-    pos += 1
+    token_stream.next_one()
 
-    if pos < len(tokens) and tokens[pos].type == TokenType.RBRACKET:
-        return ArrayNode([]), pos + 1
+    token = token_stream.peek()
+    if token is not None and token.type == TokenType.RBRACKET:
+        token_stream.next_one()
+        return ArrayNode([])
 
     elements: list[Node] = []
     while True:
-        value, pos = parse_value(tokens, pos)
+        value = parse_value(token_stream)
         elements.append(value)
 
-        if pos >= len(tokens):
+        token = token_stream.peek()
+        if token is None:
             raise ParsingError("unexpected end of tokens")
-        if tokens[pos].type == TokenType.RBRACKET:
-            return ArrayNode(elements), pos + 1
-        if tokens[pos].type != TokenType.COMMA:
+        if token.type == TokenType.RBRACKET:
+            token_stream.next_one()
+            return ArrayNode(elements)
+        if token.type != TokenType.COMMA:
             raise ParsingError("expected ',' or ']'")
-        pos += 1
+        token_stream.next_one()
 
 
-def parse(tokens: list[Token]) -> Node:
-    node, pos = parse_value(tokens, 0)
-    if pos != len(tokens):
+def parse(tokens: Iterable[Token]) -> Node:
+    token_stream = TokenStream(tokens)
+    node = parse_value(token_stream)
+    if token_stream.peek() is not None:
         raise ParsingError("trailing tokens")
     return node
 
